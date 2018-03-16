@@ -34,11 +34,14 @@ public class BackupRepairer extends FullBackupBase {
 
         BackupFrame frame;
         String statement;
+        String stupidString = "++ugh~this~is~so~hacky++";
 
         while (!(frame = inputStream.readFrame()).getEnd()) {
             if (frame.hasStatement()) {
-                statement = frame.getStatement().getStatement().replace("\\'", "''");
-                System.out.println(statement);
+                statement = frame.getStatement().getStatement()
+                                                .replace("\\',NULL,", stupidString)
+                                                .replace("\\'", "''")
+                                                .replace(stupidString, "\\',NULL,");
                 outputStream.write(BackupProtos.SqlStatement.newBuilder().setStatement(statement).build());
             } else if (frame.hasVersion() || frame.hasPreference()) {
                 outputStream.write(frame);
