@@ -9,21 +9,24 @@ public abstract class FullBackupBase {
 
   private static final String TAG = FullBackupBase.class.getSimpleName();
 
-  protected static byte[] getBackupKey(String passphrase) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-512");
-      byte[]        input  = passphrase.replace(" ", "").getBytes();
-      byte[]        hash   = input;
+  public static class BackupStream {
+    public static byte[] getBackupKey(String passphrase, byte[] salt) {
+      try {
+        MessageDigest digest = MessageDigest.getInstance("SHA-512");
+        byte[]        input  = passphrase.replace(" ", "").getBytes();
+        byte[]        hash   = input;
 
-      long start = System.currentTimeMillis();
-      for (int i=0;i<250000;i++) {
-        digest.update(hash);
-        hash = digest.digest(input);
+        if (salt != null) digest.update(salt);
+
+        for (int i=0;i<250000;i++) {
+          digest.update(hash);
+          hash = digest.digest(input);
+        }
+
+        return ByteUtil.trim(hash, 32);
+      } catch (NoSuchAlgorithmException e) {
+        throw new AssertionError(e);
       }
-
-      return ByteUtil.trim(hash, 32);
-    } catch (NoSuchAlgorithmException e) {
-      throw new AssertionError(e);
     }
   }
 

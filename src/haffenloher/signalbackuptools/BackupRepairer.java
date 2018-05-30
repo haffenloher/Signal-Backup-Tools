@@ -28,9 +28,8 @@ public class BackupRepairer extends FullBackupBase {
     public static void replaceWronglyEscapedSingleQuotes(File input, File output, String passphrase)
             throws IOException
     {
-        byte[]                  key          = getBackupKey(passphrase);
-        BackupRecordInputStream inputStream  = new BackupRecordInputStream(input, key);
-        BackupFrameOutputStream outputStream = new BackupFrameOutputStream(output, key, inputStream.getHeader());
+        BackupRecordInputStream inputStream  = new BackupRecordInputStream(input, passphrase);
+        BackupFrameOutputStream outputStream = new BackupFrameOutputStream(output, passphrase, inputStream.getHeader());
 
         BackupFrame frame;
         String statement;
@@ -56,7 +55,7 @@ public class BackupRepairer extends FullBackupBase {
         outputStream.close();
     }
 
-    private static class BackupRecordInputStream {
+    private static class BackupRecordInputStream extends BackupStream {
 
         private final InputStream in;
         private final Cipher      cipher;
@@ -70,18 +69,9 @@ public class BackupRepairer extends FullBackupBase {
 
         private final BackupProtos.Header header;
 
-        private BackupRecordInputStream(File file, byte[] key) throws IOException {
+        private BackupRecordInputStream(File file, String passphrase) throws IOException {
             try {
-                byte[]   derived = new HKDFv3().deriveSecrets(key, "Backup Export".getBytes(), 64);
-                byte[][] split   = ByteUtil.split(derived, 32, 32);
-
-                this.cipherKey = split[0];
-                this.macKey    = split[1];
-
-                this.cipher = Cipher.getInstance("AES/CTR/NoPadding");
-                this.mac    = Mac.getInstance("HmacSHA256");
                 this.in     = new FileInputStream(file);
-                this.mac.init(new SecretKeySpec(macKey, "HmacSHA256"));
 
                 byte[] headerLengthBytes = new byte[4];
                 Util.readFully(in, headerLengthBytes);
@@ -103,6 +93,17 @@ public class BackupRepairer extends FullBackupBase {
                 if (iv.length != 16) {
                     throw new IOException("Invalid IV length!");
                 }
+
+                byte[]   key     = getBackupKey(passphrase, header.hasSalt() ? header.getSalt().toByteArray() : null);
+                byte[]   derived = new HKDFv3().deriveSecrets(key, "Backup Export".getBytes(), 64);
+                byte[][] split   = ByteUtil.split(derived, 32, 32);
+
+                this.cipherKey = split[0];
+                this.macKey    = split[1];
+
+                this.cipher = Cipher.getInstance("AES/CTR/NoPadding");
+                this.mac    = Mac.getInstance("HmacSHA256");
+                this.mac.init(new SecretKeySpec(macKey, "HmacSHA256"));
 
                 this.counter = Conversions.byteArrayToInt(iv);
             } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException e) {
@@ -168,7 +169,7 @@ public class BackupRepairer extends FullBackupBase {
     }
 
 
-    private static class BackupFrameOutputStream {
+    private static class BackupFrameOutputStream extends BackupStream {
 
         private final OutputStream outputStream;
         private final Cipher       cipher;
@@ -180,10 +181,12 @@ public class BackupRepairer extends FullBackupBase {
         private byte[] iv;
         private int    counter;
 
-        private BackupFrameOutputStream(File output, byte[] key, BackupProtos.Header header) throws IOException {
+        private BackupFrameOutputStream(File output, String passphrase, BackupProtos.Header header) throws IOException {
             try {
-                byte[] derived = new HKDFv3().deriveSecrets(key, "Backup Export".getBytes(), 64);
-                byte[][] split = ByteUtil.split(derived, 32, 32);
+                byte[]   salt    = Util.getSecretBytes(32);
+                byte[]   key     = getBackupKey(passphrase, salt);
+                byte[]   derived = new HKDFv3().deriveSecrets(key, "Backup Export".getBytes(), 64);
+                byte[][] split   = ByteUtil.split(derived, 32, 32);
 
                 this.cipherKey = split[0];
                 this.macKey    = split[1];
@@ -201,7 +204,10 @@ public class BackupRepairer extends FullBackupBase {
 
                 mac.init(new SecretKeySpec(macKey, "HmacSHA256"));
 
-                byte[] headerBytes = BackupProtos.BackupFrame.newBuilder().setHeader(header).build().toByteArray();
+                byte[] headerBytes = BackupProtos.BackupFrame.newBuilder().setHeader(BackupProtos.Header.newBuilder()
+                                                                                                 .setIv(ByteString.copyFrom(iv))
+                                                                                                 .setSalt(ByteString.copyFrom(salt)))
+                                                             .build().toByteArray();
 
                 outputStream.write(Conversions.intToByteArray(headerBytes.length));
                 outputStream.write(headerBytes);
