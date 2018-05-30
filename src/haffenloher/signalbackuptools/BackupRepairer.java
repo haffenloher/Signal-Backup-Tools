@@ -55,6 +55,34 @@ public class BackupRepairer extends FullBackupBase {
         outputStream.close();
     }
 
+    public static void removeProfileData(File input, File output, String passphrase)
+            throws IOException
+    {
+        BackupRecordInputStream inputStream  = new BackupRecordInputStream(input, passphrase);
+        BackupFrameOutputStream outputStream = new BackupFrameOutputStream(output, passphrase, inputStream.getHeader());
+
+        BackupFrame frame;
+
+        while (!(frame = inputStream.readFrame()).getEnd()) {
+            if (frame.hasStatement()) {
+                outputStream.write(frame);
+            } else if (frame.hasVersion() || frame.hasPreference()) {
+                outputStream.write(frame);
+            } else if (frame.hasAttachment()) {
+                outputStream.write(frame);
+                inputStream.readWriteAttachment(outputStream.getOutputStream(), frame.getAttachment().getLength());
+                outputStream.incrementCounter();
+            }
+        }
+
+        String updateStatement = "UPDATE recipient_preferences SET profile_key = NULL, signal_profile_name = NULL, "
+                + "signal_profile_avatar = NULL, profile_sharing_approval = 0";
+        outputStream.write(BackupProtos.SqlStatement.newBuilder().setStatement(updateStatement).build());
+
+        outputStream.writeEnd();
+        outputStream.close();
+    }
+
     private static class BackupRecordInputStream extends BackupStream {
 
         private final InputStream in;

@@ -19,6 +19,14 @@ public class Main {
                 } catch (IOException e) {
                     System.err.println("I/O Error: " + e.getMessage());
                 }
+            } else if (Util.isStringEquals(args[0], "removeProfileData")) {
+                File input  = new File(args[1]);
+                File output = new File(args[2]);
+                try {
+                    BackupRepairer.removeProfileData(input, output, args[3]);
+                } catch (IOException e) {
+                    System.err.println("I/O Error: " + e.getMessage());
+                }
             } else {
                 System.err.println("Unrecognized option: " + args[0]);
                 printUsage();
@@ -29,6 +37,7 @@ public class Main {
     private static void printUsage() {
         System.out.println("Usage:");
         System.out.println("java -jar Signal-Backup-Tools.jar fixQuoteEscaping input.backup output.backup 123456");
+        System.out.println("java -jar Signal-Backup-Tools.jar removeProfileData input.backup output.backup 123456");
         System.out.println("123456 being your backup's passphrase.");
     }
 }
